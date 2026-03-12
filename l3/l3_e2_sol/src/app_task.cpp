@@ -1,0 +1,135 @@
+/*
+ * Copyright (c) 2021 Nordic Semiconductor ASA
+ *
+ * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+ */
+
+#include "app_task.h"
+
+#include "app/matter_init.h"
+#include "app/task_executor.h"
+#include "board/board.h"
+#include "lib/core/CHIPError.h"
+#include "lib/support/CodeUtils.h"
+
+#include <setup_payload/OnboardingCodesUtil.h>
+
+#include <zephyr/logging/log.h>
+
+#include <app-common/zap-generated/attributes/Accessors.h>
+
+/* STEP 4.5 - Include the header file that contains the data model callback declarations */
+#include <app-common/zap-generated/callback.h>
+
+/* STEP 4.8 Include the header file that contains the method for generating random numbers */
+#include <zephyr/random/random.h>
+
+LOG_MODULE_DECLARE(app, CONFIG_CHIP_APP_LOG_LEVEL);
+
+using namespace ::chip;
+using namespace ::chip::app;
+using namespace ::chip::DeviceLayer;
+using namespace ::chip::app::Clusters;
+using namespace ::chip::app::Clusters::OnOff;
+/* Add using namespace entry for the custom cluster */
+using namespace ::chip::app::Clusters::RandomNumberGenerator;
+
+constexpr EndpointId kOnOffPlugEndpointId = 1;
+
+void ButtonEventHandler(Nrf::ButtonState state, Nrf::ButtonMask hasChanged)
+{
+	if ((DK_BTN2_MSK & hasChanged) & state) {
+		Nrf::PostTask([] {
+			Nrf::GetBoard()
+			.GetLED(Nrf::DeviceLeds::LED2)
+			.Set(!Nrf::GetBoard().GetLED(Nrf::DeviceLeds::LED2).GetState());
+
+			SystemLayer().ScheduleLambda([] {
+				Protocols::InteractionModel::Status status = Clusters::OnOff::Attributes::OnOff::Set(
+					kOnOffPlugEndpointId, Nrf::GetBoard().GetLED(Nrf::DeviceLeds::LED2).GetState());
+
+				if (status != Protocols::InteractionModel::Status::Success) {
+					LOG_ERR("Updating on/off cluster failed: %x", to_underlying(status));
+				}
+			});
+		});
+	}
+}
+
+CHIP_ERROR AppTask::Init()
+{
+	/* Initialize Matter stack */
+	ReturnErrorOnFailure(Nrf::Matter::PrepareServer());
+
+	if (!Nrf::GetBoard().Init(ButtonEventHandler)) {
+		LOG_ERR("User interface initialization failed.");
+		return CHIP_ERROR_INCORRECT_STATE;
+	}
+
+	/* Register Matter event handler that controls the connectivity status LED based on the captured Matter network
+	 * state. */
+	ReturnErrorOnFailure(Nrf::Matter::RegisterEventHandler(Nrf::Board::DefaultMatterEventHandler, 0));
+
+	return Nrf::Matter::StartServer();
+}
+
+CHIP_ERROR AppTask::StartApp()
+{
+	ReturnErrorOnFailure(Init());
+
+	while (true) {
+		Nrf::DispatchNextTask();
+	}
+
+	return CHIP_NO_ERROR;
+}
+
+
+void MatterPostAttributeChangeCallback(const chip::app::ConcreteAttributePath &attributePath, uint8_t type,
+				       uint16_t size, uint8_t *value)
+{
+	ClusterId clusterId = attributePath.mClusterId;
+	AttributeId attributeId = attributePath.mAttributeId;
+
+	if (clusterId == OnOff::Id && attributeId == OnOff::Attributes::OnOff::Id) {
+		LOG_INF("Cluster OnOff: attribute OnOff set to %" PRIu8 "", *value);
+		Nrf::GetBoard().GetLED(Nrf::DeviceLeds::LED2).Set(*value);
+	}
+	/* STEP 4.11 -  Add handling the GenerateNumber attribute value changes */
+	else if (clusterId == RandomNumberGenerator::Id && attributeId == RandomNumberGenerator::Attributes::GeneratedNumber::Id) {
+		int16_t generatedNumber = 0;
+		memcpy(&generatedNumber, value, sizeof(int16_t));
+		LOG_INF("Cluster RandomNumberGenerator: attribute GeneratedNumber set to %d", generatedNumber);
+	}
+}
+
+/* STEP 4.4 - Define the Init callback for the RandomNumberGenerator cluster */
+void MatterRandomNumberGeneratorPluginServerInitCallback() {
+
+}
+
+bool emberAfRandomNumberGeneratorClusterGenerateCallback(chip::app::CommandHandler *commandObj, const chip::app::ConcreteCommandPath &commandPath,
+	const RandomNumberGenerator::Commands::Generate::DecodableType &commandData)
+{
+	/* STEP 4.7 - Obtain arguments included in the command that are min and max values for the random number generation */
+	int16_t minValue = commandData.minValue;
+	int16_t maxValue = commandData.maxValue;
+
+	/* STEP 4.9 - Generate a random number in a specified range */
+	LOG_INF("Generating random number between %d and %d", minValue, maxValue);
+
+	int16_t randomNumber = sys_rand16_get() % (maxValue - minValue + 1) + minValue;
+
+	LOG_INF("Random number generated: %d", randomNumber);
+
+	/* STEP 4.10 - Set the generated number as a value of the GeneratedNumber attribute */ 
+	Protocols::InteractionModel::Status status = RandomNumberGenerator::Attributes::GeneratedNumber::Set(commandPath.mEndpointId, randomNumber);
+	
+	commandObj->AddStatus(commandPath, status);
+
+	if (status == Protocols::InteractionModel::Status::Success) {
+		return true;
+	}
+
+	return false;
+}
