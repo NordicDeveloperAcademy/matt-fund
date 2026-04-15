@@ -1,0 +1,20 @@
+sample:
+  description: Matter Fundamentals Course  
+  name: Matter Fundamentals Course - Lesson 4 Exercise 1 
+
+common: 
+    sysbuild: true
+    build_only: true
+    skip: true
+
+    integration_platforms:
+      - nrf54l15dk/nrf54l15/cpuapp
+      - nrf54lm20dk/nrf54lm20a/cpuapp
+    platform_allow:
+      - nrf54l15dk/nrf54l15/cpuapp
+      - nrf54lm20dk/nrf54lm20a/cpuapp
+
+tests:
+  l4.e1: {} 
+  
+
