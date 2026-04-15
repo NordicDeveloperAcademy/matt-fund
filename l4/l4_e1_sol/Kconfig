@@ -3,20 +3,7 @@
 #
 # SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
 #
-mainmenu "Matter nRF Connect Template Example Application"
-
-# Sample configuration used for Thread networking
-if OPENTHREAD
-
-choice OPENTHREAD_NORDIC_LIBRARY_CONFIGURATION
-	default OPENTHREAD_NORDIC_LIBRARY_MTD
-endchoice
-
-choice OPENTHREAD_DEVICE_TYPE
-	default OPENTHREAD_MTD
-endchoice
-
-endif # OPENTHREAD
+mainmenu "Mattfund Lesson 4 Exercise 1"
 
 config CHIP_WIFI
 	default y if BOARD_NRF7002DK_NRF5340_CPUAPP || SHIELD_NRF7002EB2

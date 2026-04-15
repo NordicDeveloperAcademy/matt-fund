@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.20.0)
 
 find_package(Zephyr HINTS $ENV{ZEPHYR_BASE})
 
-project(l3_e2_sol)
+project(matter_fundamentals)
 
 # Point the build system to generated files for the custom cluster
 include(${ZEPHYR_NRF_MODULE_DIR}/samples/matter/common/cmake/zap_helpers.cmake)

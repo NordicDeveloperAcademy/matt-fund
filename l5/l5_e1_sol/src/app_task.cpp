@@ -333,6 +333,9 @@ CHIP_ERROR AppTask::StartApp()
 {
 	ReturnErrorOnFailure(Init());
 
+	/* STEP 3.1 - Add a log line to allow easy verification of software update */
+	LOG_INF("================ NEW SOFTWARE IMAGE IS WORKING!!! ==============="); 
+
 	while (true) {
 		Nrf::DispatchNextTask();
 	}
