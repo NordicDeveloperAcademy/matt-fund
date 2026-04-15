@@ -27,7 +27,7 @@ using namespace ::chip::DeviceLayer;
 /* STEP 3.1.1 - Define shorter code lines for the cluster methods and values */
 
 
-/* STEP 3.3.2 - [Missing] */
+/* STEP 3.3.2 - Define a helper const value used to propagate the OnOffPlug endpoint id */
 
 
 void ButtonEventHandler(Nrf::ButtonState state, Nrf::ButtonMask hasChanged)

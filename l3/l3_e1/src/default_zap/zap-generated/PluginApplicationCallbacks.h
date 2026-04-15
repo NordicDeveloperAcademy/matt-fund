@@ -19,9 +19,6 @@
 
 #pragma once
 
-void MatterIdentifyPluginServerInitCallback();
-void MatterGroupsPluginServerInitCallback();
-void MatterOnOffPluginServerInitCallback();
 void MatterDescriptorPluginServerInitCallback();
 void MatterAccessControlPluginServerInitCallback();
 void MatterBasicInformationPluginServerInitCallback();
@@ -32,12 +29,8 @@ void MatterGeneralDiagnosticsPluginServerInitCallback();
 void MatterAdministratorCommissioningPluginServerInitCallback();
 void MatterOperationalCredentialsPluginServerInitCallback();
 void MatterGroupKeyManagementPluginServerInitCallback();
-void MatterScenesManagementPluginServerInitCallback();
 
 #define MATTER_PLUGINS_INIT                                                                        \
-	MatterIdentifyPluginServerInitCallback();                                                  \
-	MatterGroupsPluginServerInitCallback();                                                    \
-	MatterOnOffPluginServerInitCallback();                                                     \
 	MatterDescriptorPluginServerInitCallback();                                                \
 	MatterAccessControlPluginServerInitCallback();                                             \
 	MatterBasicInformationPluginServerInitCallback();                                          \
@@ -47,5 +40,4 @@ void MatterScenesManagementPluginServerInitCallback();
 	MatterGeneralDiagnosticsPluginServerInitCallback();                                        \
 	MatterAdministratorCommissioningPluginServerInitCallback();                                \
 	MatterOperationalCredentialsPluginServerInitCallback();                                    \
-	MatterGroupKeyManagementPluginServerInitCallback();                                        \
-	MatterScenesManagementPluginServerInitCallback();
+	MatterGroupKeyManagementPluginServerInitCallback();
