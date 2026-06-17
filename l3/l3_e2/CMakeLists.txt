@@ -32,13 +32,14 @@ ncs_get_zap_parent_dir(ZAP_PARENT_DIR)
 target_include_directories(app PRIVATE
   src
   ${ZAP_PARENT_DIR}
+  ${ZAP_PARENT_DIR}/zap-generated
 )
 
 target_sources(app PRIVATE
   src/app_task.cpp
   src/main.cpp
+  ${ZAP_PARENT_DIR}/zap-generated/app-common/zap-generated/cluster-objects.cpp
 )
-
 # STEP 4.2 - Pass the custom cluster to the Matter data model configuration
 
 # NORDIC SDK APP END
