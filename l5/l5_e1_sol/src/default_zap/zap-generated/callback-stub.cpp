@@ -43,9 +43,6 @@ void emberAfClusterInitCallback(EndpointId endpoint, ClusterId clusterId)
 	case app::Clusters::DiagnosticLogs::Id:
 		emberAfDiagnosticLogsClusterInitCallback(endpoint);
 		break;
-	case app::Clusters::DoorLock::Id:
-		emberAfDoorLockClusterInitCallback(endpoint);
-		break;
 	case app::Clusters::GeneralCommissioning::Id:
 		emberAfGeneralCommissioningClusterInitCallback(endpoint);
 		break;
@@ -55,11 +52,14 @@ void emberAfClusterInitCallback(EndpointId endpoint, ClusterId clusterId)
 	case app::Clusters::GroupKeyManagement::Id:
 		emberAfGroupKeyManagementClusterInitCallback(endpoint);
 		break;
-	case app::Clusters::IcdManagement::Id:
-		emberAfIcdManagementClusterInitCallback(endpoint);
+	case app::Clusters::Groups::Id:
+		emberAfGroupsClusterInitCallback(endpoint);
 		break;
 	case app::Clusters::Identify::Id:
 		emberAfIdentifyClusterInitCallback(endpoint);
+		break;
+	case app::Clusters::LevelControl::Id:
+		emberAfLevelControlClusterInitCallback(endpoint);
 		break;
 	case app::Clusters::NetworkCommissioning::Id:
 		emberAfNetworkCommissioningClusterInitCallback(endpoint);
@@ -69,6 +69,9 @@ void emberAfClusterInitCallback(EndpointId endpoint, ClusterId clusterId)
 		break;
 	case app::Clusters::OtaSoftwareUpdateRequestor::Id:
 		emberAfOtaSoftwareUpdateRequestorClusterInitCallback(endpoint);
+		break;
+	case app::Clusters::OnOff::Id:
+		emberAfOnOffClusterInitCallback(endpoint);
 		break;
 	case app::Clusters::OperationalCredentials::Id:
 		emberAfOperationalCredentialsClusterInitCallback(endpoint);
@@ -113,11 +116,6 @@ void __attribute__((weak)) emberAfDiagnosticLogsClusterInitCallback(EndpointId e
 	// To prevent warning
 	(void)endpoint;
 }
-void __attribute__((weak)) emberAfDoorLockClusterInitCallback(EndpointId endpoint)
-{
-	// To prevent warning
-	(void)endpoint;
-}
 void __attribute__((weak)) emberAfGeneralCommissioningClusterInitCallback(EndpointId endpoint)
 {
 	// To prevent warning
@@ -133,12 +131,17 @@ void __attribute__((weak)) emberAfGroupKeyManagementClusterInitCallback(Endpoint
 	// To prevent warning
 	(void)endpoint;
 }
-void __attribute__((weak)) emberAfIcdManagementClusterInitCallback(EndpointId endpoint)
+void __attribute__((weak)) emberAfGroupsClusterInitCallback(EndpointId endpoint)
 {
 	// To prevent warning
 	(void)endpoint;
 }
 void __attribute__((weak)) emberAfIdentifyClusterInitCallback(EndpointId endpoint)
+{
+	// To prevent warning
+	(void)endpoint;
+}
+void __attribute__((weak)) emberAfLevelControlClusterInitCallback(EndpointId endpoint)
 {
 	// To prevent warning
 	(void)endpoint;
@@ -154,6 +157,11 @@ void __attribute__((weak)) emberAfOtaSoftwareUpdateProviderClusterInitCallback(E
 	(void)endpoint;
 }
 void __attribute__((weak)) emberAfOtaSoftwareUpdateRequestorClusterInitCallback(EndpointId endpoint)
+{
+	// To prevent warning
+	(void)endpoint;
+}
+void __attribute__((weak)) emberAfOnOffClusterInitCallback(EndpointId endpoint)
 {
 	// To prevent warning
 	(void)endpoint;

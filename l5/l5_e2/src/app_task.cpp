@@ -5,23 +5,21 @@
  */
 
 #include "app_task.h"
-#include "bolt_lock_manager.h"
-#include "clusters/identify.h"
-
-#ifdef CONFIG_THREAD_WIFI_SWITCHING
-#include "thread_wifi_switch.h"
-#endif
 
 #include "app/matter_init.h"
 #include "app/task_executor.h"
 
-#ifdef CONFIG_CHIP_NUS
-#include "bt_nus/bt_nus_service.h"
+#if defined(CONFIG_PWM)
+#include "pwm/pwm_device.h"
 #endif
 
+#include "clusters/identify.h"
+
 #include <app-common/zap-generated/attributes/Accessors.h>
-#include <app/clusters/door-lock-server/door-lock-server.h>
-#include <platform/CHIPDeviceLayer.h>
+#include <app/persistence/AttributePersistenceProviderInstance.h>
+#include <app/persistence/DefaultAttributePersistenceProvider.h>
+#include <app/persistence/DeferredAttributePersistenceProvider.h>
+#include <app/server/Server.h>
 #include <setup_payload/OnboardingCodesUtil.h>
 
 #include <zephyr/logging/log.h>
@@ -34,246 +32,160 @@ using namespace ::chip::DeviceLayer;
 
 namespace
 {
-constexpr EndpointId kLockEndpointId = 1;
+constexpr EndpointId kLightEndpointId = 1;
+constexpr uint8_t kDefaultMinLevel = 0;
+constexpr uint8_t kDefaultMaxLevel = 254;
 
-#ifdef CONFIG_CHIP_NUS
-constexpr uint16_t kAdvertisingIntervalMin = 400;
-constexpr uint16_t kAdvertisingIntervalMax = 500;
-constexpr uint8_t kLockNUSPriority = 2;
+Nrf::Matter::IdentifyCluster sIdentifyCluster(kLightEndpointId, true, []() {
+	Nrf::PostTask([] { Nrf::GetBoard().GetLED(Nrf::DeviceLeds::LED2).Set(false); });
+#if defined(CONFIG_PWM)
+	Nrf::PostTask([] { AppTask::Instance().GetPWMDevice().ApplyLevel(); });
+#endif
+});
+
+#if defined(CONFIG_PWM)
+const struct pwm_dt_spec sLightPwmDevice = PWM_DT_SPEC_GET(DT_ALIAS(pwm_led1));
 #endif
 
-#ifdef CONFIG_THREAD_WIFI_SWITCHING
-k_timer sSwitchTransportTimer;
-constexpr uint32_t kSwitchTransportTimeout = 10000;
-#endif
+/* Define a custom attribute persister which makes actual write of the CurrentLevel attribute value
+ * to the non-volatile storage only when it has remained constant for 5 seconds. This is to reduce
+ * the flash wearout when the attribute changes frequently as a result of MoveToLevel command.
+ * DeferredAttribute object describes a deferred attribute, but also holds a buffer with a value to
+ * be written, so it must live so long as the DeferredAttributePersistenceProvider object.
+ */
+DeferredAttribute gCurrentLevelPersister(ConcreteAttributePath(kLightEndpointId, Clusters::LevelControl::Id,
+							       Clusters::LevelControl::Attributes::CurrentLevel::Id));
+
+/* Deferred persistence will be auto-initialized as soon as the default persistence is initialized */
+DefaultAttributePersistenceProvider gSimpleAttributePersistence;
+DeferredAttributePersistenceProvider gDeferredAttributePersister(gSimpleAttributePersistence,
+								 Span<DeferredAttribute>(&gCurrentLevelPersister, 1),
+								 System::Clock::Milliseconds32(5000));
 
 #define APPLICATION_BUTTON_MASK DK_BTN2_MSK
-#define SWITCHING_BUTTON_MASK DK_BTN3_MSK
-
-#ifndef CONFIG_CHIP_FACTORY_RESET_ERASE_SETTINGS
-void AppFactoryResetHandler(const ChipDeviceEvent *event, intptr_t /* unused */)
-{
-	switch (event->Type) {
-	case DeviceEventType::kFactoryReset:
-		BoltLockMgr().FactoryReset();
-		break;
-	default:
-		break;
-	}
-}
-#endif
-
-Nrf::Matter::IdentifyCluster sIdentifyCluster(kLockEndpointId, false, []() {
-	Nrf::PostTask([] { Nrf::GetBoard().GetLED(Nrf::DeviceLeds::LED2).Set(BoltLockMgr().IsLocked()); });
-});
 } /* namespace */
+
+void AppTask::LightingActionEventHandler(const LightingEvent &event)
+{
+#if defined(CONFIG_PWM)
+	Nrf::PWMDevice::Action_t action = Nrf::PWMDevice::INVALID_ACTION;
+	int32_t actor = 0;
+	if (event.Actor == LightingActor::Button) {
+		action = Instance().mPWMDevice.IsTurnedOn() ? Nrf::PWMDevice::OFF_ACTION : Nrf::PWMDevice::ON_ACTION;
+		actor = static_cast<int32_t>(event.Actor);
+	}
+
+	if (action == Nrf::PWMDevice::INVALID_ACTION || !Instance().mPWMDevice.InitiateAction(action, actor, NULL)) {
+		LOG_INF("An action could not be initiated.");
+	}
+#else
+	Nrf::GetBoard().GetLED(Nrf::DeviceLeds::LED2).Set(!Nrf::GetBoard().GetLED(Nrf::DeviceLeds::LED2).GetState());
+#endif
+}
 
 void AppTask::ButtonEventHandler(Nrf::ButtonState state, Nrf::ButtonMask hasChanged)
 {
 	if ((APPLICATION_BUTTON_MASK & hasChanged) & state) {
-		Nrf::PostTask([] { LockActionEventHandler(); });
-	}
-
-#ifdef CONFIG_THREAD_WIFI_SWITCHING
-	if (SWITCHING_BUTTON_MASK & hasChanged) {
-		SwitchButtonAction action =
-			(SWITCHING_BUTTON_MASK & state) ? SwitchButtonAction::Pressed : SwitchButtonAction::Released;
-		Nrf::PostTask([action] { SwitchTransportTriggerHandler(action); });
-	}
-#endif
-}
-
-void AppTask::LockActionEventHandler()
-{
-	if (BoltLockMgr().IsLocked()) {
-		BoltLockMgr().Unlock(BoltLockManager::OperationSource::kButton);
-	} else {
-		BoltLockMgr().Lock(BoltLockManager::OperationSource::kButton);
+		Nrf::PostTask([] {
+			LightingEvent event;
+			event.Actor = LightingActor::Button;
+			LightingActionEventHandler(event);
+		});
 	}
 }
 
-#ifdef CONFIG_THREAD_WIFI_SWITCHING
-void AppTask::SwitchTransportEventHandler()
+#if defined(CONFIG_PWM)
+void AppTask::ActionInitiated(Nrf::PWMDevice::Action_t action, int32_t actor)
 {
-	LOG_INF("Switching to %s", ThreadWifiSwitch::IsThreadActive() ? "Wi-Fi" : "Thread");
-
-	ThreadWifiSwitch::SwitchTransport();
-}
-
-void AppTask::SwitchTransportTimerTimeoutCallback(k_timer *timer)
-{
-	Nrf::PostTask([] { SwitchTransportEventHandler(); });
-}
-
-void AppTask::SwitchTransportTriggerHandler(const SwitchButtonAction &action)
-{
-	if (action == SwitchButtonAction::Pressed) {
-		LOG_INF("Keep button pressed for %u ms to switch to %s", kSwitchTransportTimeout,
-			ThreadWifiSwitch::IsThreadActive() ? "Wi-Fi" : "Thread");
-		k_timer_start(&sSwitchTransportTimer, K_MSEC(kSwitchTransportTimeout), K_NO_WAIT);
-	} else {
-		LOG_INF("Switching to %s cancelled", ThreadWifiSwitch::IsThreadActive() ? "Wi-Fi" : "Thread");
-		k_timer_stop(&sSwitchTransportTimer);
+	if (action == Nrf::PWMDevice::ON_ACTION) {
+		LOG_INF("Turn On Action has been initiated");
+	} else if (action == Nrf::PWMDevice::OFF_ACTION) {
+		LOG_INF("Turn Off Action has been initiated");
+	} else if (action == Nrf::PWMDevice::LEVEL_ACTION) {
+		LOG_INF("Level Action has been initiated");
 	}
 }
-#endif
 
-void AppTask::LockStateChanged(const BoltLockManager::StateData &stateData)
+void AppTask::ActionCompleted(Nrf::PWMDevice::Action_t action, int32_t actor)
 {
-	switch (stateData.mState) {
-	case BoltLockManager::State::kLockingInitiated:
-		LOG_INF("Lock action initiated");
-		Nrf::GetBoard().GetLED(Nrf::DeviceLeds::LED2).Blink(50, 50);
-#ifdef CONFIG_CHIP_NUS
-		Nrf::GetNUSService().SendData("locking", sizeof("locking"));
-#endif
-		break;
-	case BoltLockManager::State::kLockingCompleted:
-		LOG_INF("Lock action completed");
-		Nrf::GetBoard().GetLED(Nrf::DeviceLeds::LED2).Set(true);
-#ifdef CONFIG_CHIP_NUS
-		Nrf::GetNUSService().SendData("locked", sizeof("locked"));
-#endif
-		break;
-	case BoltLockManager::State::kUnlockingInitiated:
-		LOG_INF("Unlock action initiated");
-		Nrf::GetBoard().GetLED(Nrf::DeviceLeds::LED2).Blink(50, 50);
-#ifdef CONFIG_CHIP_NUS
-		Nrf::GetNUSService().SendData("unlocking", sizeof("unlocking"));
-#endif
-		break;
-	case BoltLockManager::State::kUnlockingCompleted:
-		LOG_INF("Unlock action completed");
-#ifdef CONFIG_CHIP_NUS
-		Nrf::GetNUSService().SendData("unlocked", sizeof("unlocked"));
-#endif
-		Nrf::GetBoard().GetLED(Nrf::DeviceLeds::LED2).Set(false);
-		break;
+	if (action == Nrf::PWMDevice::ON_ACTION) {
+		LOG_INF("Turn On Action has been completed");
+	} else if (action == Nrf::PWMDevice::OFF_ACTION) {
+		LOG_INF("Turn Off Action has been completed");
+	} else if (action == Nrf::PWMDevice::LEVEL_ACTION) {
+		LOG_INF("Level Action has been completed");
 	}
 
-	/* Handle changing attribute state in the application */
-	Instance().UpdateClusterState(stateData);
+	if (actor == static_cast<int32_t>(LightingActor::Button)) {
+		Instance().UpdateClusterState();
+	}
 }
+#endif /* CONFIG_PWM */
 
-void AppTask::UpdateClusterState(const BoltLockManager::StateData &stateData)
+void AppTask::UpdateClusterState()
 {
-	BoltLockManager::StateData *stateDataCopy = Platform::New<BoltLockManager::StateData>(stateData);
+	SystemLayer().ScheduleLambda([this] {
+#if defined(CONFIG_PWM)
+		/* write the new on/off value */
+		Protocols::InteractionModel::Status status =
+			Clusters::OnOff::Attributes::OnOff::Set(kLightEndpointId, mPWMDevice.IsTurnedOn());
+#else
+		Protocols::InteractionModel::Status status = Clusters::OnOff::Attributes::OnOff::Set(
+			kLightEndpointId, Nrf::GetBoard().GetLED(Nrf::DeviceLeds::LED2).GetState());
+#endif
+		if (status != Protocols::InteractionModel::Status::Success) {
+			LOG_ERR("Updating on/off cluster failed: %x", to_underlying(status));
+		}
 
-	if (stateDataCopy == nullptr) {
-		LOG_ERR("Failed to allocate memory for BoltLockManager::StateData");
-		return;
-	}
+#if defined(CONFIG_PWM)
+		/* write the current level */
+		status = Clusters::LevelControl::Attributes::CurrentLevel::Set(kLightEndpointId, mPWMDevice.GetLevel());
+#else
+		/* write the current level */
+		if (Nrf::GetBoard().GetLED(Nrf::DeviceLeds::LED2).GetState()) {
+			status = Clusters::LevelControl::Attributes::CurrentLevel::Set(kLightEndpointId, 100);
+		} else {
+			status = Clusters::LevelControl::Attributes::CurrentLevel::Set(kLightEndpointId, 0);
+		}
+#endif
 
-	CHIP_ERROR err = SystemLayer().ScheduleLambda([stateDataCopy]() {
-		UpdateClusterStateHandler(*stateDataCopy);
-		Platform::Delete(stateDataCopy);
+		if (status != Protocols::InteractionModel::Status::Success) {
+			LOG_ERR("Updating level cluster failed: %x", to_underlying(status));
+		}
 	});
-
-	if (err != CHIP_NO_ERROR) {
-		LOG_ERR("Failed to schedule lambda: %" CHIP_ERROR_FORMAT, err.Format());
-		Platform::Delete(stateDataCopy);
-	}
 }
 
-void AppTask::UpdateClusterStateHandler(const BoltLockManager::StateData &stateData)
+void AppTask::InitPWMDDevice()
 {
-	using namespace chip::app::Clusters::DoorLock::Attributes;
+#if defined(CONFIG_PWM)
+	/* Initialize lighting device (PWM) */
+	uint8_t minLightLevel = kDefaultMinLevel;
+	Clusters::LevelControl::Attributes::MinLevel::Get(kLightEndpointId, &minLightLevel);
 
-	DlLockState newLockState;
+	uint8_t maxLightLevel = kDefaultMaxLevel;
+	Clusters::LevelControl::Attributes::MaxLevel::Get(kLightEndpointId, &maxLightLevel);
 
-	switch (stateData.mState) {
-	case BoltLockManager::State::kLockingCompleted:
-		newLockState = DlLockState::kLocked;
-		break;
-	case BoltLockManager::State::kUnlockingCompleted:
-		newLockState = DlLockState::kUnlocked;
-		break;
-	default:
-		newLockState = DlLockState::kNotFullyLocked;
-		break;
+	Clusters::LevelControl::Attributes::CurrentLevel::TypeInfo::Type currentLevel;
+	Clusters::LevelControl::Attributes::CurrentLevel::Get(kLightEndpointId, currentLevel);
+
+	int ret =
+		mPWMDevice.Init(&sLightPwmDevice, minLightLevel, maxLightLevel, currentLevel.ValueOr(kDefaultMaxLevel));
+	if (ret != 0) {
+		LOG_ERR("Failed to initialize PWD device.");
 	}
 
-	Nullable<DlLockState> currentLockState;
-	LockState::Get(kLockEndpointId, currentLockState);
-
-	if (currentLockState.IsNull()) {
-		/* Initialize lock state with start value, but not invoke lock/unlock. */
-		LockState::Set(kLockEndpointId, newLockState);
-	} else {
-		LOG_INF("Updating LockState attribute");
-
-		Nullable<uint16_t> userId;
-		Nullable<List<const LockOpCredentials>> credentials;
-#ifdef CONFIG_LOCK_PASS_CREDENTIALS_TO_SET_LOCK_STATE
-		List<const LockOpCredentials> credentialList;
+	mPWMDevice.SetCallbacks(ActionInitiated, ActionCompleted);
 #endif
-
-		if (!stateData.mValidatePINResult.IsNull()) {
-			userId = { stateData.mValidatePINResult.Value().mUserId };
-
-#ifdef CONFIG_LOCK_PASS_CREDENTIALS_TO_SET_LOCK_STATE
-			/* `DoorLockServer::SetLockState` exptects list of `LockOpCredentials`,
-			   however in case of PIN validation it makes no sense to have more than one
-			   credential corresponding to validation result. For simplicity we wrap single
-			   credential in list here. */
-			credentialList = { &stateData.mValidatePINResult.Value().mCredential, 1 };
-			credentials = { credentialList };
-#endif
-		}
-
-		if (!DoorLockServer::Instance().SetLockState(kLockEndpointId, newLockState, stateData.mSource, userId,
-							     credentials, stateData.mFabricIdx, stateData.mNodeId)) {
-			LOG_ERR("Failed to update LockState attribute");
-		}
-	}
 }
-
-#ifdef CONFIG_CHIP_NUS
-void AppTask::NUSLockCallback(void *context)
-{
-	LOG_DBG("Received LOCK command from NUS");
-	if (BoltLockMgr().GetState().mState == BoltLockManager::State::kLockingCompleted ||
-	    BoltLockMgr().GetState().mState == BoltLockManager::State::kLockingInitiated) {
-		LOG_INF("Device is already locked");
-	} else {
-		Nrf::PostTask([] { LockActionEventHandler(); });
-	}
-}
-
-void AppTask::NUSUnlockCallback(void *context)
-{
-	LOG_DBG("Received UNLOCK command from NUS");
-	if (BoltLockMgr().GetState().mState == BoltLockManager::State::kUnlockingCompleted ||
-	    BoltLockMgr().GetState().mState == BoltLockManager::State::kUnlockingInitiated) {
-		LOG_INF("Device is already unlocked");
-	} else {
-		Nrf::PostTask([] { LockActionEventHandler(); });
-	}
-}
-#endif
-
-#ifdef CONFIG_NCS_SAMPLE_MATTER_TEST_EVENT_TRIGGERS
-CHIP_ERROR AppTask::DoorLockJammedEventCallback(Nrf::Matter::TestEventTrigger::TriggerValue)
-{
-	VerifyOrReturnError(DoorLockServer::Instance().SendLockAlarmEvent(kLockEndpointId, AlarmCodeEnum::kLockJammed),
-			    CHIP_ERROR_INTERNAL);
-	LOG_ERR("Event Trigger: Doorlock jammed.");
-	return CHIP_NO_ERROR;
-}
-#endif
 
 CHIP_ERROR AppTask::Init()
 {
 	/* Initialize Matter stack */
-#ifdef CONFIG_THREAD_WIFI_SWITCHING
-	/* In the Thread/Wi-Fi switchable mode, it is the ThreadWifiSwitch module that owns the NetworkCommissioning
-	   instances, so offload the initialization module from controlling that by explicitly setting the
-	   mNetworkingInstance parameter to nullptr. Otherwise, the initialization module instantiates the
-	   NetworkCommissioning object and handles it by default internally. */
-	ReturnErrorOnFailure(Nrf::Matter::PrepareServer(Nrf::Matter::InitData{ .mNetworkingInstance = nullptr }));
-#else
-	ReturnErrorOnFailure(Nrf::Matter::PrepareServer());
-#endif
+	ReturnErrorOnFailure(Nrf::Matter::PrepareServer(Nrf::Matter::InitData{ .mPostServerInitClbk = []() {
+		app::SetAttributePersistenceProvider(&gDeferredAttributePersister);
+		gSimpleAttributePersistence.Init(Nrf::Matter::GetPersistentStorageDelegate());
+		return CHIP_NO_ERROR;
+	} }));
 
 	if (!Nrf::GetBoard().Init(ButtonEventHandler)) {
 		LOG_ERR("User interface initialization failed.");
@@ -283,46 +195,6 @@ CHIP_ERROR AppTask::Init()
 	/* Register Matter event handler that controls the connectivity status LED based on the captured Matter network
 	 * state. */
 	ReturnErrorOnFailure(Nrf::Matter::RegisterEventHandler(Nrf::Board::DefaultMatterEventHandler, 0));
-
-#ifndef CONFIG_CHIP_FACTORY_RESET_ERASE_SETTINGS
-	/* Register factory reset event handler.
-	 * With this configuration we have to manually clean up the storage,
-	 * as whole settings partition won't be erased.
-	 * */
-	ReturnErrorOnFailure(Nrf::Matter::RegisterEventHandler(AppFactoryResetHandler, 0));
-#endif
-
-#ifdef CONFIG_THREAD_WIFI_SWITCHING
-	CHIP_ERROR err = ThreadWifiSwitch::StartCurrentTransport();
-	if (err != CHIP_NO_ERROR) {
-		LOG_ERR("ThreadWifiSwitch::StartCurrentTransport() failed: %" CHIP_ERROR_FORMAT, err.Format());
-		return err;
-	}
-
-	k_timer_init(&sSwitchTransportTimer, &AppTask::SwitchTransportTimerTimeoutCallback, nullptr);
-#endif
-
-#ifdef CONFIG_CHIP_NUS
-	/* Initialize Nordic UART Service for Lock purposes */
-	if (!Nrf::GetNUSService().Init(kLockNUSPriority, kAdvertisingIntervalMin, kAdvertisingIntervalMax)) {
-		ChipLogError(Zcl, "Cannot initialize NUS service");
-	}
-	Nrf::GetNUSService().RegisterCommand("Lock", sizeof("Lock"), NUSLockCallback, nullptr);
-	Nrf::GetNUSService().RegisterCommand("Unlock", sizeof("Unlock"), NUSUnlockCallback, nullptr);
-	if (!Nrf::GetNUSService().StartServer()) {
-		LOG_ERR("GetNUSService().StartServer() failed");
-	}
-#endif
-
-	/* Initialize lock manager */
-	BoltLockMgr().Init(LockStateChanged);
-
-	/* Register Door Lock test event trigger */
-#ifdef CONFIG_NCS_SAMPLE_MATTER_TEST_EVENT_TRIGGERS
-	ReturnErrorOnFailure(Nrf::Matter::TestEventTrigger::Instance().RegisterTestEventTrigger(
-		kDoorLockJammedEventTriggerId,
-		Nrf::Matter::TestEventTrigger::EventTrigger{ 0, DoorLockJammedEventCallback }));
-#endif
 
 	ReturnErrorOnFailure(sIdentifyCluster.Init());
 
@@ -334,7 +206,6 @@ CHIP_ERROR AppTask::StartApp()
 	ReturnErrorOnFailure(Init());
 
 	/* STEP 3.1 - Add a log line to allow easy verification of software update */
-	
 
 	while (true) {
 		Nrf::DispatchNextTask();
