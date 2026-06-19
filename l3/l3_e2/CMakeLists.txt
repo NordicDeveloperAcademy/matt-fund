@@ -12,9 +12,6 @@ project(matter_fundamentals)
 
 # STEP 4.1 - Point the build system to generated files for the custom cluster
 
-# Override zap-generated directory.
-get_filename_component(CHIP_APP_ZAP_DIR ${ZAP_PARENT_DIR}/zap-generated REALPATH CACHE)
-
 # Enable GNU STD support.
 include(${ZEPHYR_CONNECTEDHOMEIP_MODULE_DIR}/config/nrfconnect/app/enable-gnu-std.cmake)
 
