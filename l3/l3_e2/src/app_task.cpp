@@ -18,7 +18,7 @@
 
 #include <app-common/zap-generated/attributes/Accessors.h>
 
-/* STEP 4.5 - Include the header file that contains the data model callback declarations */
+/* STEP 4.4 - Include the header file that contains the data model callback declarations */
 
 
 /* STEP 4.8 Include the header file that contains the method for generating random numbers */
@@ -31,7 +31,8 @@ using namespace ::chip::app;
 using namespace ::chip::DeviceLayer;
 using namespace ::chip::app::Clusters;
 using namespace ::chip::app::Clusters::OnOff;
-/* Add using namespace entry for the custom cluster */
+
+/* STEP 4.5 - Add using namespace entry for the custom cluster */
 using namespace ::chip::app::Clusters::RandomNumberGenerator;
 
 constexpr EndpointId kOnOffPlugEndpointId = 1;
@@ -99,7 +100,7 @@ void MatterPostAttributeChangeCallback(const chip::app::ConcreteAttributePath &a
 
 }
 
-/* STEP 4.4 - Define the Init callback for the RandomNumberGenerator cluster */
+/* STEP 4.3 - Define the Init callback for the RandomNumberGenerator cluster */
 
 
 bool emberAfRandomNumberGeneratorClusterGenerateCallback(chip::app::CommandHandler *commandObj, const chip::app::ConcreteCommandPath &commandPath,
