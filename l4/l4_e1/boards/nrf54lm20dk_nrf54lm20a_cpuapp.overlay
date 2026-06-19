@@ -3,24 +3,13 @@
  *
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
+#include <samples/matter/nrf54lm20_cpuapp_partitions.dtsi>
 
 / {
-	chosen {
-		nordic,pm-ext-flash = &mx25r64;
-	};
-
 	aliases {
 		/* Use watchdog wdt31 as the application watchdog */
 		watchdog0 = &wdt31;
 	};
-};
-
-&mx25r64 {
-	status = "okay";
-};
-
-&wdt31 {
-	status = "okay";
 };
 
 &rram_controller {
@@ -28,4 +17,8 @@
 		reg = <0x0 DT_SIZE_K(2036)>;
 		ranges = <0x0 0x0 DT_SIZE_K(2036)>;
 	};
+};
+
+&wdt31 {
+	status = "okay";
 };

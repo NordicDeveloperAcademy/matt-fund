@@ -12,9 +12,6 @@ project(matter_fundamentals)
 
 # STEP 4.1 - Point the build system to generated files for the custom cluster
 
-# Override zap-generated directory.
-get_filename_component(CHIP_APP_ZAP_DIR ${ZAP_PARENT_DIR}/zap-generated REALPATH CACHE)
-
 # Enable GNU STD support.
 include(${ZEPHYR_CONNECTEDHOMEIP_MODULE_DIR}/config/nrfconnect/app/enable-gnu-std.cmake)
 
@@ -32,13 +29,14 @@ ncs_get_zap_parent_dir(ZAP_PARENT_DIR)
 target_include_directories(app PRIVATE
   src
   ${ZAP_PARENT_DIR}
+  ${ZAP_PARENT_DIR}/zap-generated
 )
 
 target_sources(app PRIVATE
   src/app_task.cpp
   src/main.cpp
+  ${ZAP_PARENT_DIR}/zap-generated/app-common/zap-generated/cluster-objects.cpp
 )
-
 # STEP 4.2 - Pass the custom cluster to the Matter data model configuration
 
 # NORDIC SDK APP END
