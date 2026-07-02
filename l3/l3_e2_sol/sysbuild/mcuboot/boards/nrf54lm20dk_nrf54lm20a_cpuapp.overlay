@@ -3,16 +3,14 @@
  *
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
+#include <samples/matter/nrf54lm20_cpuapp_partitions.dtsi>
 
 / {
 	chosen {
-		nordic,pm-ext-flash = &mx25r64;
+		zephyr,code-partition = &boot_partition;
 	};
 };
 
-&mx25r64 {
-	status = "okay";
-};
 
 &rram_controller {
 	cpuapp_rram: rram@0 {

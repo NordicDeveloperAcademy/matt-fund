@@ -20,6 +20,9 @@
 #pragma once
 
 void MatterIdentifyPluginServerInitCallback();
+void MatterGroupsPluginServerInitCallback();
+void MatterOnOffPluginServerInitCallback();
+void MatterLevelControlPluginServerInitCallback();
 void MatterDescriptorPluginServerInitCallback();
 void MatterAccessControlPluginServerInitCallback();
 void MatterBasicInformationPluginServerInitCallback();
@@ -34,11 +37,12 @@ void MatterWiFiNetworkDiagnosticsPluginServerInitCallback();
 void MatterAdministratorCommissioningPluginServerInitCallback();
 void MatterOperationalCredentialsPluginServerInitCallback();
 void MatterGroupKeyManagementPluginServerInitCallback();
-void MatterIcdManagementPluginServerInitCallback();
-void MatterDoorLockPluginServerInitCallback();
 
 #define MATTER_PLUGINS_INIT                                                                                            \
 	MatterIdentifyPluginServerInitCallback();                                                                      \
+	MatterGroupsPluginServerInitCallback();                                                                        \
+	MatterOnOffPluginServerInitCallback();                                                                         \
+	MatterLevelControlPluginServerInitCallback();                                                                  \
 	MatterDescriptorPluginServerInitCallback();                                                                    \
 	MatterAccessControlPluginServerInitCallback();                                                                 \
 	MatterBasicInformationPluginServerInitCallback();                                                              \
@@ -52,6 +56,4 @@ void MatterDoorLockPluginServerInitCallback();
 	MatterWiFiNetworkDiagnosticsPluginServerInitCallback();                                                        \
 	MatterAdministratorCommissioningPluginServerInitCallback();                                                    \
 	MatterOperationalCredentialsPluginServerInitCallback();                                                        \
-	MatterGroupKeyManagementPluginServerInitCallback();                                                            \
-	MatterIcdManagementPluginServerInitCallback();                                                                 \
-	MatterDoorLockPluginServerInitCallback();
+	MatterGroupKeyManagementPluginServerInitCallback();

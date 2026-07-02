@@ -6,8 +6,9 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
-find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(matter-lock)
+find_package(Zephyr HINTS $ENV{ZEPHYR_BASE})
+
+project(matter-light-bulb)
 
 # Enable GNU STD support.
 include(${ZEPHYR_CONNECTEDHOMEIP_MODULE_DIR}/config/nrfconnect/app/enable-gnu-std.cmake)
@@ -28,37 +29,12 @@ target_include_directories(app PRIVATE
   ${ZAP_PARENT_DIR}
 )
 
-SET(access_srcs
-  src/access/access_data_types.cpp
-  src/access/access_manager_credentials.cpp
-  src/access/access_manager_users.cpp
-  src/access/access_manager.cpp
-  src/access/access_storage.cpp
-)
-
-if(CONFIG_LOCK_SCHEDULES)
-  LIST(APPEND access_srcs src/access/access_manager_schedules.cpp)
-endif()
-
 target_sources(app PRIVATE
   src/app_task.cpp
-  src/bolt_lock_manager.cpp
   src/main.cpp
   src/zcl_callbacks.cpp
-  ${access_srcs}
+  ${CHIP_ROOT}/src/app/persistence/DeferredAttributePersistenceProvider.cpp
 )
 
-if(CONFIG_THREAD_WIFI_SWITCHING)
-  target_sources(app PRIVATE
-    src/thread_wifi_switch.cpp
-  )
-endif()
-
-# Do not treat warnings as errors while the variable may be uninitialized for this sample data model.
-# In the door-lock-server implementation, there is a warning that the C++ "optional"
-# variable may be uninitialized, but actually, it is wrongly interpreted by the Zephyr toolchain.
-target_compile_options(matter-data-model PRIVATE -Wno-error=maybe-uninitialized)
-
 ncs_configure_data_model()
-
 # NORDIC SDK APP END
