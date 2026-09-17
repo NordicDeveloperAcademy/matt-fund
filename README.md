@@ -5,5 +5,5 @@ The Matter Fundamentals course is a self-paced hands-on online course focusing o
 
 This repository contains the exercise code base and solutions. Make sure to select the branch that corresponds with the nRF Connect SDK version of your choosing:
 <ul>
-    <li><code>main</code>: For nRF Connect SDK version v3.4.0 </li> 
+    <li><code>main</code>: For nRF Connect SDK version v3.4.1 </li> 
 </ul>
